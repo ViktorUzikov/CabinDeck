@@ -1,9 +1,10 @@
 from PyQt6.QtWidgets import QMainWindow, QApplication, QDialog, QMessageBox, QDialogButtonBox, QFileDialog, QSizePolicy, \
     QLabel, QPushButton
-from PyQt6.QtCore import QDateTime, Qt
+from PyQt6.QtCore import QDateTime, Qt, pyqtSignal
 from .interface import Ui_MainWindow
 from .flight_dialog_interface import Ui_Dialog as FlightDialogUI
 from .passenger_dialog_interface import Ui_Dialog as PassengerDialogUI
+from .food_dialog_interface import Ui_Dialog as FoodDialogUI
 import sys
 from .db import Database
 from datetime import datetime
@@ -48,6 +49,16 @@ def ask_image(widget, choose_text: str):
         QMessageBox.critical(widget, 'Ошибка', 'Произошла ошибка обработки картинки')
 
         return False
+
+
+class BothClickButton(QPushButton):
+    rightClicked = pyqtSignal()
+
+    def mouseReleaseEvent(self, e):
+        if e.button() == Qt.MouseButton.RightButton and self.rect().contains(e.position().toPoint()):
+            self.rightClicked.emit()
+
+        super().mouseReleaseEvent(e)
 
 
 class FlightDialog(QDialog, FlightDialogUI):
@@ -124,6 +135,29 @@ class PassengerDialog(QDialog, PassengerDialogUI):
                 self.photo_pixmap, self.photo_path)
 
 
+class FoodDialog(QDialog, FoodDialogUI):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.setupUi(self)
+
+        self.setWindowTitle("Новое питание")
+
+        self.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setText('Добавить')
+        self.buttonBox.button(QDialogButtonBox.StandardButton.Cancel).setText('Отменить')
+
+    def accept(self):
+        if not self.name.text().strip():
+            QMessageBox.warning(self, 'Ошибка', 'Заполните все поля')
+
+            return
+
+        super().accept()
+
+    def get_data(self):
+        return self.name.text().strip(), int(self.count.value())
+
+
 class Window(QMainWindow, Ui_MainWindow):
     def __init__(self):
         super().__init__()
@@ -142,9 +176,13 @@ class Window(QMainWindow, Ui_MainWindow):
         self.new_flight.clicked.connect(self.show_flight_dialog)
         self.add_passenger.clicked.connect(self.show_passenger_dialog)
         self.listView.clicked.connect(self.on_passenger_selected)
+        self.food_list.clicked.connect(self.on_food_selected)
+        self.add_button.clicked.connect(self.show_food_dialog)
         self.new_photo_in_passengers.clicked.connect(
             self.new_photo_callback)
         self.new_photo.clicked.connect(self.new_photo_callback)
+        self.food_count.editingFinished.connect(self.on_food_changed)
+        self.food_name.editingFinished.connect(self.on_food_changed)
 
         self.flight_choice.currentIndexChanged.connect(self.on_flight_changed)
 
@@ -152,8 +190,13 @@ class Window(QMainWindow, Ui_MainWindow):
 
         self.listView.setModel(self.model)
 
+        self.food_model = QStandardItemModel()
+
+        self.food_list.setModel(self.food_model)
+
         self.current_flight_id = -1
         self.current_passenger_in_list = -1
+        self.current_food_in_list = -1
 
         self.build_scheme()
 
@@ -164,10 +207,11 @@ class Window(QMainWindow, Ui_MainWindow):
             for seat_i, seat in enumerate(row):
                 grid_col = seat_i if seat_i < 3 else seat_i + 1
 
-                btn = QPushButton(seat)
+                btn = BothClickButton(seat)
                 btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
                 btn.setMinimumSize(30, 30)
                 btn.clicked.connect(lambda _, s=seat: self.on_seat_clicked(s))
+                btn.rightClicked.connect(lambda _, s=seat: self.on_seat_rightClicked(s))
 
                 self.scheme.addWidget(btn, row_i, grid_col)
                 self.seat_buttons[seat] = btn
@@ -259,6 +303,15 @@ class Window(QMainWindow, Ui_MainWindow):
 
         return item
 
+    def add_food_item(self, food_id: int, name: str):
+        item = QStandardItem(name)
+        item.setData(food_id, Qt.ItemDataRole.UserRole)
+        item.setEditable(False)
+
+        self.food_model.appendRow(item)
+
+        return item
+
     def load_passengers(self):
         self.model.clear()
 
@@ -268,8 +321,25 @@ class Window(QMainWindow, Ui_MainWindow):
         for person in self.db.get_passengers(self.current_flight_id):
             self.add_passenger_item(person[0], person[2])
 
+    def load_food(self):
+        self.food_model.clear()
+
+        if self.current_flight_id == -1:
+            return
+
+        for food in self.db.get_foods(self.current_flight_id):
+            self.add_food_item(food[0], food[2])
+
     def on_passenger_selected(self, index):
         self.refresh_passenger(index.data(Qt.ItemDataRole.UserRole))
+
+    def on_food_selected(self, index):
+        self.current_food_in_list = index.data(Qt.ItemDataRole.UserRole)
+
+        name, quantity = self.db.get_food(self.current_food_in_list)
+
+        self.food_name.setText(name)
+        self.food_count.setValue(quantity)
 
     def clear_labels(self):
         self.current_passenger_in_list = -1
@@ -277,6 +347,12 @@ class Window(QMainWindow, Ui_MainWindow):
         for label in (self.place_in_passengers, self.name_in_passengers, self.class_in_passengers, self.class_serv,
                       self.place, self.name, self.photo, self.photo_in_passengers):
             label.clear()
+
+    def clear_food_labels(self):
+        self.current_food_in_list = -1
+
+        self.food_count.clear()
+        self.food_name.clear()
 
     def show_flight_dialog(self):
         dialog = FlightDialog(self)
@@ -306,9 +382,59 @@ class Window(QMainWindow, Ui_MainWindow):
 
             index = self.model.indexFromItem(self.add_passenger_item(passenger_id, name))
 
+            self.listView.setCurrentIndex(index)
+
             self.on_passenger_selected(index)
 
             self.refresh_scheme()
+
+    def show_food_dialog(self):
+        dialog = FoodDialog(self)
+
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            if self.current_flight_id == -1:
+                QMessageBox.warning(self, 'Ошибка', 'Нету рейсов')
+
+                return
+
+            name, count = dialog.get_data()
+
+            try:
+                food_id = self.db.add_food(self.current_flight_id, name, count)
+            except IntegrityError:
+                QMessageBox.warning(self, 'Ошибка', 'Такое питание уже есть')
+
+                return
+
+            index = self.food_model.indexFromItem(self.add_food_item(food_id, name))
+
+            self.food_list.setCurrentIndex(index)
+
+            self.on_food_selected(index)
+
+    def on_food_changed(self):
+        if self.current_food_in_list == -1:
+            return
+
+        name = self.food_name.text().strip()
+        count = int(self.food_count.value())
+
+        if not name:
+            QMessageBox.warning(self, 'Ошибка', 'Имя не может быть пустым')
+
+            return
+
+        try:
+            self.db.change_food(self.current_food_in_list, name, count)
+        except IntegrityError:
+            QMessageBox.warning(self, 'Ошибка', 'Такое питание уже есть')
+
+            return
+
+        index = self.food_list.currentIndex()
+
+        if index.isValid():
+            self.food_model.setData(index, name)
 
     def on_flight_changed(self):
         self.current_flight_id = self.flight_choice.currentData()
@@ -316,6 +442,8 @@ class Window(QMainWindow, Ui_MainWindow):
         self.load_passengers()
         self.refresh_scheme()
         self.select_first_passenger()
+        self.load_food()
+        self.select_first_food()
 
     def select_first_passenger(self):
         if not self.model.rowCount():
@@ -328,6 +456,18 @@ class Window(QMainWindow, Ui_MainWindow):
             self.listView.setCurrentIndex(index)
 
             self.on_passenger_selected(index)
+
+    def select_first_food(self):
+        if not self.food_model.rowCount():
+            self.clear_food_labels()
+        else:
+            index = self.food_model.index(0, 0)
+
+            self.current_food_in_list = index
+
+            self.food_list.setCurrentIndex(index)
+
+            self.on_food_selected(index)
 
     def rebuild_choice(self, select_id: int | None = None):
         self.flight_choice.blockSignals(True)
@@ -347,6 +487,9 @@ class Window(QMainWindow, Ui_MainWindow):
         self.flight_choice.blockSignals(False)
 
         self.on_flight_changed()
+
+    def close(self):
+        self.db.close()
 
 
 if __name__ == "__main__":

@@ -32,9 +32,10 @@ class Database:
         );''')
         self.db.execute('''CREATE TABLE IF NOT EXISTS food_items (
                 id integer PRIMARY KEY autoincrement,
-                name text NOT NULL unique,
+                flight_id integer NOT NULL references flights(id) on delete cascade,
+                name text NOT NULL,
                 quantity integer NOT NULL,
-                min_quantity integer NOT NULL
+                unique (flight_id, name)
         );''')
         self.db.execute('create index if not exists idx_passengers_flight on passengers(flight_id);')
         self.db.execute('create index if not exists idx_comments_passenger on comments(passenger_id);')
@@ -62,6 +63,9 @@ class Database:
 
     def get_flight(self, flight_id: int):
         return self.db.execute('SELECT * FROM flights where id = ?', (flight_id,)).fetchone()
+
+    def delete_flight(self, flight_id: int):
+        return self._run('DELETE FROM flights WHERE id = ?', (flight_id,))
 
     def add_passenger(self, flight_id: int, full_name: str, seat: str, service_class: str, photo_path: str = 'None'):
         return self._run(
@@ -96,9 +100,46 @@ class Database:
             (*updates.values(), passenger_id),
         ).rowcount
 
+    def delete_passenger(self, passenger_id: int):
+        return self._run('DELETE FROM passengers WHERE id = ?', (passenger_id,))
+
     def get_passenger_by_seat(self, flight_id: int, seat: str):
         return self.db.execute('SELECT * FROM passengers where flight_id = ? and seat = ?',
                                (flight_id, seat)).fetchone()
+
+    def add_food(self, flight_id: int, name: str, quantity: int):
+        return self._run(
+            f'INSERT INTO food_items (flight_id, name, quantity) VALUES (?, ?, ?)',
+            (flight_id, name, quantity,)
+        ).lastrowid
+
+    def get_food(self, food_id: int):
+        return self.db.execute('SELECT name, quantity FROM food_items WHERE id = ?',
+                               (food_id,)).fetchone()
+
+    def get_foods(self, flight_id: int):
+        return self._all('SELECT * FROM food_items WHERE flight_id = ?', (flight_id,))
+
+    def change_food(self, food_id: int, name: str, quantity: int):
+        fields = {
+            'name': name,
+            'quantity': quantity,
+        }
+
+        updates = {col: val for col, val in fields.items() if val != 'None'}
+
+        if not updates:
+            return 0
+
+        set_updates = ', '.join(f'{col} = ?' for col in updates)
+
+        return self._run(
+            f'UPDATE food_items SET {set_updates} WHERE id = ?',
+            (*updates.values(), food_id),
+        ).rowcount
+
+    def delete_food(self, food_id: int):
+        return self._run('DELETE FROM food_items WHERE id = ?', (food_id,))
 
     def close(self):
         self.db.close()

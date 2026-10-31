@@ -162,6 +162,9 @@ class Ui_MainWindow(object):
         self.food_count.setGeometry(QtCore.QRect(330, 80, 121, 22))
         self.food_count.setMaximum(9999)
         self.food_count.setObjectName("food_count")
+        self.add_button = QtWidgets.QPushButton(parent=self.food_tab)
+        self.add_button.setGeometry(QtCore.QRect(724, 30, 81, 31))
+        self.add_button.setObjectName("add_button")
         self.tabWidget.addTab(self.food_tab, "")
         self.flight_label = QtWidgets.QLabel(parent=self.centralwidget)
         self.flight_label.setGeometry(QtCore.QRect(40, 10, 41, 41))
@@ -189,7 +192,7 @@ class Ui_MainWindow(object):
         MainWindow.setStatusBar(self.statusbar)
 
         self.retranslateUi(MainWindow)
-        self.tabWidget.setCurrentIndex(0)
+        self.tabWidget.setCurrentIndex(2)
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
 
     def retranslateUi(self, MainWindow):
@@ -217,7 +220,8 @@ class Ui_MainWindow(object):
         self.add_passenger.setText(_translate("MainWindow", "Добавить"))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.passengers_tab), _translate("MainWindow", "Пассажиры"))
         self.food_name.setText(_translate("MainWindow", "Название"))
-        self.food_name.setPlaceholderText(_translate("MainWindow", "Картошка"))
+        self.food_name.setPlaceholderText(_translate("MainWindow", "Напишите название"))
+        self.add_button.setText(_translate("MainWindow", "Добавить"))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.food_tab), _translate("MainWindow", "Питание"))
         self.flight_label.setText(_translate("MainWindow", "Рейс"))
         self.flight_choice.setItemText(0, _translate("MainWindow", "Рейсы"))

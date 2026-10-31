@@ -24,7 +24,7 @@
      </rect>
     </property>
     <property name="currentIndex">
-     <number>0</number>
+     <number>2</number>
     </property>
     <property name="tabsClosable">
      <bool>false</bool>
@@ -424,7 +424,7 @@
        <string>Название</string>
       </property>
       <property name="placeholderText">
-       <string>Картошка</string>
+       <string>Напишите название</string>
       </property>
      </widget>
      <widget class="QSpinBox" name="food_count">
@@ -438,6 +438,19 @@
       </property>
       <property name="maximum">
        <number>9999</number>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="add_button">
+      <property name="geometry">
+       <rect>
+        <x>724</x>
+        <y>30</y>
+        <width>81</width>
+        <height>31</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Добавить</string>
       </property>
      </widget>
     </widget>
