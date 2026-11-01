@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import QMainWindow, QApplication, QDialog, QMessageBox, QDialogButtonBox, QFileDialog, QSizePolicy, \
-    QLabel, QPushButton
+    QLabel, QPushButton, QMenu
 from PyQt6.QtCore import QDateTime, Qt, pyqtSignal
 from .interface import Ui_MainWindow
 from .flight_dialog_interface import Ui_Dialog as FlightDialogUI
@@ -9,9 +9,31 @@ import sys
 from .db import Database
 from datetime import datetime
 from .consts import *
-from PyQt6.QtGui import QPixmap, QStandardItemModel, QStandardItem
+from PyQt6.QtGui import QPixmap, QStandardItemModel, QStandardItem, QCursor
 from os.path import join, basename, abspath
 from sqlite3 import IntegrityError
+
+
+def show_menu(self, data, db):
+    menu = QMenu(self)
+
+    for item in data:
+        menu.addAction(item)
+
+    action = menu.exec(QCursor.pos())
+
+    if action:
+        name, count = action.text().split(' - ')
+
+        if int(count) <= 0:
+            QMessageBox.warning(self, 'Ошибка', 'Нельзя выдать несуществующую еду')
+
+            return
+
+        db.decrease_food_by_name(name)
+
+        self.load_food()
+        self.select_first_food()
 
 
 def setup_photo_label(label: QLabel):
@@ -54,11 +76,11 @@ def ask_image(widget, choose_text: str):
 class BothClickButton(QPushButton):
     rightClicked = pyqtSignal()
 
-    def mouseReleaseEvent(self, e):
-        if e.button() == Qt.MouseButton.RightButton and self.rect().contains(e.position().toPoint()):
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.RightButton and self.rect().contains(event.position().toPoint()):
             self.rightClicked.emit()
 
-        super().mouseReleaseEvent(e)
+        super().mouseReleaseEvent(event)
 
 
 class FlightDialog(QDialog, FlightDialogUI):
@@ -211,13 +233,26 @@ class Window(QMainWindow, Ui_MainWindow):
                 btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
                 btn.setMinimumSize(30, 30)
                 btn.clicked.connect(lambda _, s=seat: self.on_seat_clicked(s))
-                btn.rightClicked.connect(lambda _, s=seat: self.on_seat_rightClicked(s))
+                btn.rightClicked.connect(lambda s=seat: self.show_food(s))
 
                 self.scheme.addWidget(btn, row_i, grid_col)
                 self.seat_buttons[seat] = btn
 
         self.scheme.setColumnMinimumWidth(3, 20)
         self.scheme.setColumnStretch(3, 0)
+
+    def show_food(self, seat):
+        if self.current_flight_id == -1:
+            return
+
+        person = self.db.get_passenger_by_seat(self.current_flight_id, seat)
+
+        if person is None:
+            return
+
+        foods = self.db.get_foods(self.current_flight_id)
+
+        show_menu(self, [f'{food[2]} - {food[3]}' for food in foods], self.db)
 
     def refresh_scheme(self):
         taken = dict()
@@ -437,7 +472,7 @@ class Window(QMainWindow, Ui_MainWindow):
             self.food_model.setData(index, name)
 
     def on_flight_changed(self):
-        self.current_flight_id = self.flight_choice.currentData()
+        self.current_flight_id = self.flight_choice.currentData() or -1
 
         self.load_passengers()
         self.refresh_scheme()

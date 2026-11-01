@@ -141,5 +141,8 @@ class Database:
     def delete_food(self, food_id: int):
         return self._run('DELETE FROM food_items WHERE id = ?', (food_id,))
 
+    def decrease_food_by_name(self, name: str):
+        return self._run('UPDATE food_items SET quantity = quantity - 1 WHERE name = ?', (name,))
+
     def close(self):
         self.db.close()
